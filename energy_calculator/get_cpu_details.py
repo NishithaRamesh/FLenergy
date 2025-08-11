@@ -10,6 +10,7 @@ import re
 # path to store powervalues into a csv from Intel Power Gadget
 cpu_windows_path = os.getcwd() + "\\cpu_values.csv"
 cpu_linux_path = os.getcwd() + "\\cpu_output.txt"
+rapl_path = "/sys/class/powercap/intel-rapl"
 
 def get_power_from_RAM():
     # Get the power consumed by the system
@@ -82,92 +83,49 @@ def calculate_from_ipg(csv_file_path):
     
     return power
 
-def calculate_from_pwst(csv_file_path):
-    #write the code to read the powerstatt file
-    # with open(filename, "r") as f:
-    #     lines = f.readlines()
-
-    # # Find the "Average" line
-    # for line in lines:
-    #     if "Average" in line:
-    #         parts = line.split()
-    #         power_avg = float(parts[1])  # Extract the average power (Watts)
-    #         break
-
-    # # Calculate energy in Joules
-    # energy = power_avg * duration
-    # print("energy: ")
-    # print(energy)
-    # return energy
-    return 45
+def calculate_from_rapl():
+    """
+    Calculate CPU power consumption using Linux RAPL interface.
+    """
+    try:
+        energy_uj_path = os.path.join(rapl_path, "intel-rapl:0", "energy_uj")
+        if os.path.exists(energy_uj_path):
+            with open(energy_uj_path, "r") as file:
+                energy_uj = int(file.read().strip())
+                power_watts = energy_uj / 1e6  # Convert microjoules to watts
+                return power_watts
+        else:
+            print("RAPL interface not found.")
+            return 0
+    except Exception as e:
+        print(f"Error reading RAPL data: {e}")
+        return 0
 
 def calculate_cpu_power(os_name, cpu_model, tdp_values):
+    """
+    Calculate CPU power consumption based on the operating system.
+    """
     if os_name == "Windows":
         if os.path.exists(cpu_windows_path):
-            power = calculate_from_ipg(cpu_windows_path)
-        else:
-            power = calculate_from_tdp(cpu_model, tdp_values)
+            return calculate_from_ipg(cpu_windows_path)
+        return calculate_from_tdp(cpu_model, tdp_values)
     elif os_name == "Linux":
-        # if os.path.exists(cpu_linux_path):
-        #     power = calculate_from_pwst(cpu_linux_path)
-        # else:
-        power = calculate_from_tdp(cpu_model, tdp_values)
-        return power
-    
-    return power
+        if os.path.exists(rapl_path):
+            return calculate_from_rapl()
+        return calculate_from_tdp(cpu_model, tdp_values)
+    return 0
 
-# Start running intel power_gadget
-def start_energy_power_gadget(powergadget_path,duration, resolution):
-    
-    # duration in seconds 
-    duration = str(duration)
-
-    # resolution in milliseconds
-    resolution = str(resolution)
-
-    # Command to run powergadget
+def start_energy_power_gadget(powergadget_path, duration, resolution):
+    """
+    Start Intel Power Gadget to log power consumption.
+    """
     command = f'"{powergadget_path}" -duration {duration} -resolution {resolution} -file "{cpu_windows_path}"'
+    subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
-    # Execute the command
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-
-    # Get the output and errors
-    output, errors = process.communicate()
-
-    return 
-
-# def powerstatt_start(duration, resolution):
-    # resolution = str(resolution)
-    # output_file = "./cpu_output.txt"
-    # command = ["powerstat", "-d", str(resolution), "-c", "-z"]
-
-    # with open(output_file, "w") as f:
-    #     # Start powerstat
-    #     process = subprocess.Popen(command, stdout=f)
-
-    #     # Let it run for the specified duration
-    #     # time.sleep(duration)
-
-    #     # # Stop powerstat
-    #     # process.terminate()
-
-
-# def powerstat_start(duration, resolution):
-#     resolution = str(resolution)
-#     output_file = "./cpu_output.txt"
-#     # command = ["powerstat", "-d", resolution, "-c", "-z", "-r"]
-#     command = ["sudo", "powerstat", "-R"]
-#     with open(output_file, "w") as f:
-#         # Start powerstat
-#         process = subprocess.Popen(command, stdout=f)
-
-#         # Let it run for the specified duration
-#         time.sleep(duration)
-
-#         # Stop powerstat
-#         process.terminate()
-        
 def get_platform():
+    """
+    Get the operating system name.
+    """
     os_name = platform.system()
     print("Operating System:", os_name)
     return os_name
